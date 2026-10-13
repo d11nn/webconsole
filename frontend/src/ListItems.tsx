@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
@@ -11,23 +11,29 @@ import PersonIcon from "@mui/icons-material/Person";
 
 import { Link } from "react-router-dom";
 import { LoginContext } from "./LoginContext";
-import { config } from "./constants/config";
+import axios from "./axios";
 
 export const MainListItems = () => {
-  const { user } = useContext(LoginContext);
-
-  const isAdmin = () => {
-    if (config.enableCognitoAuth) {
-      return true;
-    }
-    if (user !== null && user.username === "admin") {
-      return true;
-    }
-    return false;
-  };
+  const context = useContext(LoginContext);
+  if (context === undefined) throw new Error("LoginContext provider required");
+  const { user } = context;
+  const [subscriberAdmin, setSubscriberAdmin] = useState(false);
+  useEffect(() => {
+    let active = true;
+    axios.get("/api/rbac/me").then(response => {
+      if (active) setSubscriberAdmin(response.data.permissions.includes("subscriber:manage") || response.data.permissions.includes("tenant:manage:tenant"));
+    }).catch(() => {
+      // Legacy subscriber navigation when the opt-in integration is disabled.
+      // This grants no host deployment capability; all APIs authorize independently.
+      if (active) setSubscriberAdmin(user?.username === "admin");
+    });
+    return () => { active = false; };
+  }, [user]);
+  const isAdmin = () => subscriberAdmin;
 
   return (
     <React.Fragment>
+ <Link to="/deployments" style={{ color: "inherit", textDecoration: "inherit" }}><ListItemButton><ListItemText primary="部署與 Agent 授權" /></ListItemButton></Link>
       <Link to="/status" style={{ color: "inherit", textDecoration: "inherit" }}>
         <ListItemButton>
           <ListItemIcon>

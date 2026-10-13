@@ -133,7 +133,16 @@ func (a *WebuiApp) Start(tlsKeyLogPath string) {
 	}()
 
 	router := WebUI.NewRouter()
+	if err := WebUI.InitDeployment(context.Background(), mongodb.Name); err != nil {
+		logger.InitLog.Errorln(err)
+		return
+	}
 	WebUI.SetAdmin()
+	if WebUI.DeploymentService != nil {
+		workerContext, cancelWorker := context.WithCancel(context.Background())
+		defer cancelWorker()
+		go WebUI.DeploymentService.Run(workerContext)
+	}
 	if err := WebUI.InitJwtKey(); err != nil {
 		logger.InitLog.Errorln(err)
 		return

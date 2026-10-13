@@ -9,7 +9,7 @@ import Container from "@mui/material/Container";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import Paper from "@mui/material/Paper";
 import axios from "../axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { LoginContext } from "../LoginContext";
 
 const theme = createTheme({
@@ -70,6 +70,7 @@ const theme = createTheme({
 
 export default function SignIn() {
   const navigation = useNavigate();
+  const location = useLocation();
   const [error, setError] = useState<string>("");
   const context = useContext(LoginContext);
   if (context === undefined) {
@@ -87,7 +88,8 @@ export default function SignIn() {
           setUser({ username: data.get("email")!.toString(), token: res.data.access_token });
         }
         setError("");
-        navigation("/");
+        const returnTo = location.state?.returnTo;
+        navigation(typeof returnTo === "string" && /^\/deployments(?:\/req-[a-f0-9]+)?$/.test(returnTo) ? returnTo : "/");
       })
       .catch((err) => {
         console.log(err.message);

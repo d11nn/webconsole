@@ -1,6 +1,6 @@
 import React, { useContext, useState } from "react";
 import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
@@ -59,8 +59,7 @@ export default function SimpleListMenu(props: SimpleListMenuProps) {
   return (
     <div>
       <List component="nav" aria-label="Device settings">
-        <ListItem
-          button
+        <ListItemButton
           id="lock-button"
           aria-haspopup="listbox"
           aria-controls="lock-menu"
@@ -69,7 +68,7 @@ export default function SimpleListMenu(props: SimpleListMenuProps) {
           onClick={handleClickListItem}
         >
           <ListItemText primaryTypographyProps={{ fontSize: "18px" }} primary={props.title} />
-        </ListItem>
+        </ListItemButton>
       </List>
       <Menu
         id="lock-menu"

@@ -21,6 +21,8 @@ import ProfileList from "./pages/ProfileList";
 import ProfileCreate from "./pages/ProfileCreate";
 import ProfileRead from "./pages/ProfileRead";
 
+import Deployments from "./pages/Deployments";
+
 export default function App() {
   const [user, setUser] = useState<User | null>(() => {
     // retrieve from local storage on initial load (if available)
@@ -56,6 +58,8 @@ export default function App() {
     <LoginContext.Provider value={contextValue}>
       <BrowserRouter>
         <Routes>
+ <Route path="/deployments" element={<ProtectedRoute permission="deployment:read"><Deployments /></ProtectedRoute>} />
+ <Route path="/deployments/:id" element={<ProtectedRoute permission="deployment:read"><Deployments /></ProtectedRoute>} />
           <Route path="/login" element={<Login />} />
           <Route
             path="/status"

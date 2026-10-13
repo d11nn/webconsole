@@ -1,10 +1,12 @@
 package WebUI
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/free5gc/webconsole/backend/deployment"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -71,51 +73,21 @@ func init() {
 
 // Create Admin's Tenant & Account
 func SetAdmin() {
-	err := mongoapi.RestfulAPIDeleteOne("tenantData", bson.M{"tenantName": "admin"})
-	if err != nil {
-		logger.InitLog.Errorf("RestfulAPIDeleteOne err: %+v", err)
+	// Preserve existing credentials and identities. Legacy admin is a subscriber
+	// administrator only; host deployment approval requires explicit bootstrap.
+	if DeploymentService == nil {
+		return
 	}
-	err = mongoapi.RestfulAPIDeleteOne("userData", bson.M{"email": "admin"})
-	if err != nil {
-		logger.InitLog.Errorf("RestfulAPIDeleteOne err: %+v", err)
+	user, err := mongoapi.RestfulAPIGetOne(userDataColl, bson.M{"email": "admin"})
+	if err != nil || len(user) == 0 {
+		return
 	}
-
-	// Create Admin tenant
-	logger.InitLog.Infoln("Create tenant: admin")
-
-	adminTenantData := bson.M{
-		"tenantId":   uuid.Must(uuid.NewRandom()).String(),
-		"tenantName": "admin",
-	}
-
-	_, err = mongoapi.RestfulAPIPutOne("tenantData", bson.M{"tenantName": "admin"}, adminTenantData)
-	if err != nil {
-		logger.InitLog.Errorf("RestfulAPIPutOne err: %+v", err)
-	}
-
-	AmdinTenant, err := mongoapi.RestfulAPIGetOne("tenantData", bson.M{"tenantName": "admin"})
-	if err != nil {
-		logger.InitLog.Errorf("RestfulAPIGetOne err: %+v", err)
-	}
-
-	// Create Admin user
-	logger.InitLog.Infoln("Create user: admin")
-
-	hash, err := bcrypt.GenerateFromPassword([]byte("free5gc"), DefaultBcryptCost)
-	if err != nil {
-		logger.InitLog.Errorf("GenerateFromPassword err: %+v", err)
-	}
-
-	adminUserData := bson.M{
-		"userId":            uuid.Must(uuid.NewRandom()).String(),
-		"tenantId":          AmdinTenant["tenantId"],
-		"email":             "admin",
-		"encryptedPassword": string(hash),
-	}
-
-	_, err = mongoapi.RestfulAPIPutOne("userData", bson.M{"email": "admin"}, adminUserData)
-	if err != nil {
-		logger.InitLog.Errorf("RestfulAPIPutOne err: %+v", err)
+	uid, _ := user["userId"].(string)
+	tenant, _ := user["tenantId"].(string)
+	if uid != "" && tenant != "" {
+		if err := DeploymentService.MigrateLegacyAdmin(context.Background(), uid, tenant); err != nil {
+			logger.InitLog.Errorln("RBAC migration failed")
+		}
 	}
 }
 
@@ -449,8 +421,20 @@ func getAuthenticatedClaims(c *gin.Context) (jwt.MapClaims, error) {
 }
 
 func isAdminClaims(claims jwt.MapClaims) bool {
-	email, ok := getClaimString(claims, "email")
-	return ok && email == "admin"
+	uid, ok := getClaimString(claims, "sub")
+	if !ok {
+		return false
+	}
+	tenant, ok := getClaimString(claims, "tenantId")
+	if !ok {
+		return false
+	}
+	if DeploymentService != nil {
+		return DeploymentService.Can(context.Background(), deployment.Principal{UserID: uid, TenantID: tenant}, "subscriber:manage")
+	}
+	// Compatibility when host integration is disabled, verified against DB identity.
+	user, err := mongoapi.RestfulAPIGetOne(userDataColl, bson.M{"userId": uid, "tenantId": tenant})
+	return err == nil && user["email"] == "admin"
 }
 
 func AuthMiddleware() gin.HandlerFunc {
@@ -461,6 +445,20 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		if strings.HasPrefix(c.GetHeader("Authorization"), "Bearer ") {
+			if !deploymentPath(c.Request.URL.Path) || DeploymentService == nil {
+				c.AbortWithStatusJSON(403, gin.H{"error": "Agent access denied"})
+				return
+			}
+			p, err := DeploymentService.Authenticate(c, strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
+			if err != nil {
+				c.AbortWithStatusJSON(401, gin.H{"error": "Agent credential invalid"})
+				return
+			}
+			c.Set("deploymentPrincipal", p)
+			c.Next()
+			return
+		}
 		claims, err := ParseJWT(c.GetHeader("Token"))
 		if err != nil {
 			logger.ProcLog.Errorln(err.Error())
@@ -477,6 +475,9 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Set(authClaimsContextKey, claims)
 		c.Set(authTenantContextKey, tenantId)
 		c.Set(authAdminContextKey, isAdminClaims(claims))
+		if !guardLegacyRBAC(c, claims, tenantId) {
+			return
+		}
 		c.Next()
 	}
 }
@@ -526,7 +527,12 @@ func GetTenants(c *gin.Context) {
 		return
 	}
 
-	tenantDataInterface, err := mongoapi.RestfulAPIGetMany(tenantDataColl, bson.M{})
+	filter := bson.M{}
+	if scoped, _ := c.Get("tenantScopedAdmin"); scoped == true {
+		tenant, _ := GetTenantId(c)
+		filter["tenantId"] = tenant
+	}
+	tenantDataInterface, err := mongoapi.RestfulAPIGetMany(tenantDataColl, filter)
 	if err != nil {
 		logger.ProcLog.Errorf("GetTenants err: %+v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{})
@@ -588,6 +594,20 @@ func PostTenant(c *gin.Context) {
 		return
 	}
 
+	if DeploymentService != nil && tenantData.TenantId != "" {
+		protected, e := DeploymentService.HostProtected(c, tenantData.TenantId, "")
+		if e != nil {
+			c.JSON(503, gin.H{"error": "authorization storage unavailable"})
+			return
+		}
+		claims, _ := getAuthenticatedClaims(c)
+		uid, _ := getClaimString(claims, "sub")
+		tenant, _ := GetTenantId(c)
+		if protected && !DeploymentService.Can(c, deployment.Principal{UserID: uid, TenantID: tenant}, "role:manage") {
+			c.JSON(403, gin.H{"error": "host tenant protected"})
+			return
+		}
+	}
 	// fmt.Println("in Post Tenant")
 	if tenantData.TenantId == "" {
 		tenantData.TenantId = uuid.Must(uuid.NewRandom()).String()
@@ -759,7 +779,6 @@ func GetUserByID(c *gin.Context) {
 	}
 
 	userData.EncryptedPassword = ""
-
 	c.JSON(http.StatusOK, userData)
 }
 
@@ -814,6 +833,7 @@ func PostUserByID(c *gin.Context) {
 		return
 	}
 
+	userData.EncryptedPassword = ""
 	c.JSON(http.StatusOK, userData)
 }
 
@@ -873,6 +893,17 @@ func PutUserByID(c *gin.Context) {
 		userData.Email = newUserData.Email
 	}
 
+	if DeploymentService != nil && newUserData.EncryptedPassword != "" {
+		protected, e := DeploymentService.HostProtected(c, tenantId, userId)
+		if e != nil {
+			c.JSON(503, gin.H{"error": "authorization storage unavailable"})
+			return
+		}
+		if protected && len(newUserData.EncryptedPassword) < 12 {
+			c.JSON(400, gin.H{"error": "owner password must have at least 12 characters"})
+			return
+		}
+	}
 	if newUserData.EncryptedPassword != "" {
 		hash, err_gen := bcrypt.GenerateFromPassword([]byte(newUserData.EncryptedPassword), DefaultBcryptCost)
 		if err_gen != nil {
@@ -890,6 +921,7 @@ func PutUserByID(c *gin.Context) {
 		return
 	}
 
+	userData.EncryptedPassword = ""
 	c.JSON(http.StatusOK, userData)
 }
 
@@ -2237,7 +2269,25 @@ func ChangePasswordInfo(c *gin.Context) {
 		return
 	}
 
-	filterEmailOnly := bson.M{"tenantId": tenantId, "email": newUserData.Email}
+	claims, claimErr := getAuthenticatedClaims(c)
+	uid, ok := getClaimString(claims, "sub")
+	email, emailOK := getClaimString(claims, "email")
+	if claimErr != nil || !ok || !emailOK || newUserData.Email != email {
+		c.JSON(403, gin.H{"error": "password changes are limited to the authenticated user"})
+		return
+	}
+	if DeploymentService != nil {
+		protected, e := DeploymentService.HostProtected(c, tenantId, uid)
+		if e != nil {
+			c.JSON(503, gin.H{"error": "authorization storage unavailable"})
+			return
+		}
+		if protected && len(newUserData.EncryptedPassword) < 12 {
+			c.JSON(400, gin.H{"error": "owner password must have at least 12 characters"})
+			return
+		}
+	}
+	filterEmailOnly := bson.M{"tenantId": tenantId, "userId": uid, "email": email}
 	userDataInterface, err := mongoapi.RestfulAPIGetOne(userDataColl, filterEmailOnly)
 	if err != nil {
 		logger.ProcLog.Errorf("ChangePassword err: %+v", err)
@@ -2266,6 +2316,7 @@ func ChangePasswordInfo(c *gin.Context) {
 		logger.ProcLog.Errorf("PutUserByID err: %+v", err_put)
 	}
 
+	userData.EncryptedPassword = ""
 	c.JSON(http.StatusOK, userData)
 }
 

@@ -1,11 +1,11 @@
 package WebUI
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
-	logger_util "github.com/free5gc/util/logger"
 	"github.com/free5gc/webconsole/backend/logger"
 )
 
@@ -26,7 +26,15 @@ type Routes []Route
 
 // NewRouter returns a new router.
 func NewRouter() *gin.Engine {
-	router := logger_util.NewGinWithLogrus(logger.GinLog)
+	router := gin.New()
+	// Never dump request headers/body/query on errors: Token and Authorization are secrets.
+	router.Use(func(c *gin.Context) {
+		c.Next()
+		logger.GinLog.Infof("| %d | %s | %s", c.Writer.Status(), c.Request.Method, c.FullPath())
+	}, gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, recovered interface{}) {
+		logger.GinLog.Error("HTTP handler failed (request details redacted)")
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+	}))
 	AddService(router)
 	return router
 }
@@ -34,6 +42,7 @@ func NewRouter() *gin.Engine {
 func AddService(engine *gin.Engine) *gin.RouterGroup {
 	group := engine.Group("/api")
 	group.Use(AuthMiddleware())
+	AddDeploymentRoutes(group)
 
 	for _, route := range routes {
 		switch route.Method {

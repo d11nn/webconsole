@@ -31,7 +31,9 @@ export interface Password {
 export default function ChangePassword() {
   const navigation = useNavigate();
 
-  const { user } = useContext(LoginContext);
+  const context = useContext(LoginContext);
+  if (context === undefined) throw new Error("LoginContext provider required");
+  const { user } = context;
 
   const [password, setPassword] = useState<Password>({});
 

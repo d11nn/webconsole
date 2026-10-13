@@ -21,6 +21,7 @@ import ProfileList from "./pages/ProfileList";
 import ProfileCreate from "./pages/ProfileCreate";
 import ProfileRead from "./pages/ProfileRead";
 
+import AgentTeam from "./pages/AgentTeam";
 import Deployments from "./pages/Deployments";
 
 export default function App() {
@@ -58,6 +59,8 @@ export default function App() {
     <LoginContext.Provider value={contextValue}>
       <BrowserRouter>
         <Routes>
+<Route path="/agent-team" element={<ProtectedRoute permission="team:read"><AgentTeam /></ProtectedRoute>} />
+<Route path="/agent-team/:id" element={<ProtectedRoute permission="team:read"><AgentTeam /></ProtectedRoute>} />
  <Route path="/deployments" element={<ProtectedRoute permission="deployment:read"><Deployments /></ProtectedRoute>} />
  <Route path="/deployments/:id" element={<ProtectedRoute permission="deployment:read"><Deployments /></ProtectedRoute>} />
           <Route path="/login" element={<Login />} />

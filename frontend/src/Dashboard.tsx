@@ -200,6 +200,7 @@ export interface DashboardProps {
   children: React.ReactNode;
   title: string;
   refreshAction: () => void;
+  compactHeader?: boolean;
 }
 
 function Dashboard(props: DashboardProps) {
@@ -418,7 +419,7 @@ function Dashboard(props: DashboardProps) {
               minHeight: 180,
               backgroundColor: "#ffffff",
               borderBottom: "1px solid #d8d8d8",
-              display: "flex",
+              display: props.compactHeader ? "none" : "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",

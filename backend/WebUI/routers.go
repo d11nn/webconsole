@@ -43,6 +43,7 @@ func AddService(engine *gin.Engine) *gin.RouterGroup {
 	group := engine.Group("/api")
 	group.Use(AuthMiddleware())
 	AddDeploymentRoutes(group)
+	AddTeamRoutes(group)
 
 	for _, route := range routes {
 		switch route.Method {

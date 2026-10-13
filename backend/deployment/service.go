@@ -20,10 +20,10 @@ var ErrConflict = errors.New("state conflict")
 var ErrNotFound = errors.New("not found")
 var errNoWork = errors.New("no worker state change")
 var Permissions = map[string][]string{
-	"Admin":           {"deployment:read", "deployment:request", "deployment:approve", "agent:manage", "role:manage", "subscriber:manage"},
+	"Admin":           {"team:run", "team:read", "deployment:read", "deployment:request", "deployment:approve", "agent:manage", "role:manage", "subscriber:manage"},
 	"SubscriberAdmin": {"subscriber:manage", "deployment:read", "deployment:request"},
 	"TenantAdmin":     {"subscriber:manage:tenant", "tenant:manage:tenant", "deployment:read", "deployment:request"},
-	"Diagnostician":   {"deployment:read", "deployment:request"},
+	"Diagnostician":   {"team:read", "deployment:read", "deployment:request"},
 	"Deployer":        {"deployment:read", "deployment:request", "deployment:start:approved-request"},
 }
 

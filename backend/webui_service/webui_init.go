@@ -138,6 +138,10 @@ func (a *WebuiApp) Start(tlsKeyLogPath string) {
 		return
 	}
 	WebUI.SetAdmin()
+	if err := WebUI.InitTeam(context.Background(), mongodb.Name); err != nil {
+		logger.InitLog.Errorln(err)
+		return
+	}
 	if WebUI.DeploymentService != nil {
 		workerContext, cancelWorker := context.WithCancel(context.Background())
 		defer cancelWorker()
@@ -196,6 +200,9 @@ func (a *WebuiApp) Start(tlsKeyLogPath string) {
 }
 
 func (a *WebuiApp) Terminate() {
+	if WebUI.TeamService != nil {
+		WebUI.TeamService.Close()
+	}
 	logger.MainLog.Infoln("Terminating WebUI-AF...")
 
 	if a.billingServer != nil {

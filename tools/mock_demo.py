@@ -50,10 +50,10 @@ def main():
             print('Existing demo owner:',owner_marker.read_text().strip())
         env=dict(os.environ,FREE5GC_DEPLOYMENT_MODE='mock',FREE5GC_DEPLOYMENT_HOST='mock-demo-host',
                  FREE5GC_DEPLOYMENT_COMMIT=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),
-                 FREE5GC_DEPLOYMENT_SCRIPT_HASH=hashlib.sha256((repo/'quick-setup.sh').read_bytes()).hexdigest(),GIN_MODE='release')
+                 FREE5GC_DEPLOYMENT_SCRIPT_HASH=hashlib.sha256((repo/'quick-setup.sh').read_bytes()).hexdigest(),GIN_MODE='release',FREE5GC_TEAM_MODE='codex',FREE5GC_TEAM_RUNTIME=str(root/'tools/agent_team.py'))
         with (state/'webconsole.log').open('a') as log:
             demo=subprocess.Popen([str(state/'rbac-demo'),'--mongo-uri',uri,'--database','mock_demo','--addr','127.0.0.1:'+str(args.port)],cwd=root,env=env,stdout=log,stderr=log)
-            print('Mock Webconsole: http://127.0.0.1:%d/deployments'%args.port)
+            print('Webconsole: http://127.0.0.1:%d/agent-team (real Codex; installation is plan-only)'%args.port,flush=True)
             print('Agent target host: mock-demo-host; evidence retained in',state)
             print('Ctrl-C stops only this demo and its isolated MongoDB.')
             demo.wait()

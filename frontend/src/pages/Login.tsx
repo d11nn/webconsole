@@ -89,7 +89,7 @@ export default function SignIn() {
         }
         setError("");
         const returnTo = location.state?.returnTo;
-        navigation(typeof returnTo === "string" && /^\/deployments(?:\/req-[a-f0-9]+)?$/.test(returnTo) ? returnTo : "/");
+        navigation(typeof returnTo === "string" && /^\/(?:deployments(?:\/req-[a-f0-9]+)?|agent-team(?:\/[a-f0-9-]+)?)$/.test(returnTo) ? returnTo : "/");
       })
       .catch((err) => {
         console.log(err.message);

@@ -33,6 +33,7 @@ export const MainListItems = () => {
 
   return (
     <React.Fragment>
+<Link to="/agent-team" style={{ color:"inherit",textDecoration:"inherit" }}><ListItemButton><ListItemIcon><SupervisorAccountOutlinedIcon /></ListItemIcon><ListItemText primary="AGENT TEAM" /></ListItemButton></Link>
  <Link to="/deployments" style={{ color: "inherit", textDecoration: "inherit" }}><ListItemButton><ListItemText primary="部署與 Agent 授權" /></ListItemButton></Link>
       <Link to="/status" style={{ color: "inherit", textDecoration: "inherit" }}>
         <ListItemButton>
